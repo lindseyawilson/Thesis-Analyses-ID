@@ -1,0 +1,974 @@
+---
+title: "ID Analyses"
+output: html_document
+date: '`r Sys.Date()`'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Calorie Data
+
+## Data Preparation
+
+Let's start by loading in our packages:
+```{r packages, message = FALSE}
+library(tidyverse)
+library(readxl)
+library(rstatix)
+library(ggpubr)
+library(ez)
+library(emmeans)
+library(car)
+library(Hmisc)
+library(corrplot)
+```
+
+And let's read our excel data in
+
+```{r read data}
+#Vector for column names and diet names
+column_names <- c("rat", "zero", "twenty", "forty", "sixty", "eighty", "hundred", "h2o", "spill", "condition", "day")
+diet_names <- c("zero", "twenty", "forty", "sixty", "eighty", "hundred")
+condition_names <- c("HI", "LO", "VEH", "NAL")
+
+#Read in data
+data <- read_excel("ID Test Data.xlsx", sheet = 6, range = "A3:K50", col_names = column_names)
+
+#turn negatives to zeroes
+data_filtered <- data
+data_filtered[data_filtered < 0] <- 0
+```
+
+Now we need to pivot the data into long format:
+
+```{r pivot_longer, warning = FALSE}
+data_long <- data_filtered %>%
+  pivot_longer(cols = diet_names, names_to = "diet", values_to = "kcal")
+```
+
+Also, because spillage and water consumption are in grams, for now I'm just going to drop it:
+
+```{r drop spill and h2o}
+data_long_foodOnly <- data_long %>%
+  subset(select = -c(h2o, spill))
+```
+
+And with that I think we have the data looking how we want it. 
+
+## Basic visualizations
+
+Now lets try visualizing things before we do any inferential analyses. For a start, lets plot average caloric intake over drug condition
+
+```{r intake by condition}
+#mean calories for each drug condition (collapsed across days, conditions, and rats)
+meanKcals_groupedByDrug <- data_long_foodOnly %>%
+  group_by(condition) %>%
+  summarise(mean(kcal))
+
+#SD's
+SDKcals_groupedByDrug <- data_long_foodOnly %>%
+  group_by(condition) %>%
+  summarise(sd(kcal))
+
+#Merge data frames
+data_groupedByDrug <- inner_join(meanKcals_groupedByDrug,
+                                 SDKcals_groupedByDrug, 
+                                by = "condition" ) %>%
+  rename("mean_kcal" = "mean(kcal)",
+         "sd_kcal" = "sd(kcal)")
+
+data_groupedByDrug$condition <- factor(data_groupedByDrug$condition,
+                                       levels = c("HI", "LO", "VEH", "NAL"))
+
+#Make plot
+data_groupedByDrug %>%
+  ggplot(mapping = aes(x = condition,
+                       y = mean_kcal,
+                       fill = condition)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_kcal - sd_kcal,
+                    ymax = mean_kcal + sd_kcal))
+```
+
+And to get a sense of between-subject variability, lets do a similar analysis grouping by rat
+
+```{r intake by rat}
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanKcals_groupedByRat <- data_long_foodOnly %>%
+  group_by(rat) %>%
+  summarise(mean(kcal))
+
+#SD's
+SDKcals_groupedByRat <- data_long_foodOnly %>%
+  group_by(rat) %>%
+  summarise(sd(kcal))
+
+#Merge data frames
+data_groupedByRat <- inner_join(meanKcals_groupedByRat,
+                                 SDKcals_groupedByRat, 
+                                by = "rat" ) %>%
+  rename("mean_kcal" = "mean(kcal)",
+         "sd_kcal" = "sd(kcal)")
+
+rat_names <- c("ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID8", "ID9", "ID10", "ID11", "ID12")
+data_groupedByRat$rat <- factor(data_groupedByRat$rat,
+                                       levels = rat_names)
+
+#Make plot
+data_groupedByRat %>%
+  ggplot(mapping = aes(x = rat,
+                       y = mean_kcal,
+                       fill = rat)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_kcal - sd_kcal,
+                    ymax = mean_kcal + sd_kcal))
+```
+
+And just as a rough replication of the last study, lets group by diet too:
+
+```{r intake by diet}
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanKcals_groupedByDiet <- data_long_foodOnly %>%
+  group_by(diet) %>%
+  summarise(mean(kcal))
+
+#SD's
+SDKcals_groupedByDiet <- data_long_foodOnly %>%
+  group_by(diet) %>%
+  summarise(sd(kcal))
+
+#Merge data frames
+data_groupedByDiet <- inner_join(meanKcals_groupedByDiet,
+                                 SDKcals_groupedByDiet, 
+                                by = "diet" ) %>%
+  rename("mean_kcal" = "mean(kcal)",
+         "sd_kcal" = "sd(kcal)")
+
+data_groupedByDiet$diet <- factor(data_groupedByDiet$diet,
+                                       levels = diet_names)
+
+#Make plot
+data_groupedByDiet %>%
+  ggplot(mapping = aes(x = diet,
+                       y = mean_kcal,
+                       fill = diet)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_kcal - sd_kcal,
+                    ymax = mean_kcal + sd_kcal))
+```
+
+So here it looks like on average the eighty percent diet was a hit. However, it seems like across all of these dimensions, as overall caloric intake increases, the variation in intake also increases.
+
+## Inferential Stats
+
+Now let's do the hypothesis test:
+
+```{r hypothesis test}
+res.aov = anova_test(
+  data = data_long_foodOnly, dv = kcal, wid = rat,
+  within = c(condition, diet)
+)
+get_anova_table(res.aov)
+
+#trying it a different way
+exp2 <- aov(kcal ~ diet*condition + Error(rat/(diet*condition)), data = data_long_foodOnly)
+summary(exp2)
+```
+
+So these two methods of calculation slightly disagree about the p-value for the main effect of drug, but they both clearly show two main effects and an interaction. The p-values are actually suspiciously small here; we might have to circle back to this.
+
+In any case, I want to get a more detailed visualization before I decide what post-hoc analyses I want to run:
+
+```{r hypothesis test viz}
+ggboxplot(data_long_foodOnly,
+          x = "diet", y = "kcal",
+          color = "condition"
+          )
+```
+
+So at least descriptively, this looks like good news! Consumption was highest of the sixty and eighty percent diet, and within each group, drugs look like they behaved the way we were expecting. Additionally, the significant interaction suggests that the drug effect was diet-dependent; the high dose of DAMGO spiked calorie intake a lot more for the eighty percent diet than it did for any of the others.
+
+However, what I'm concerned about is that calculating things based on calories might actually be giving us an underestimate of what's going on. That's because the diets favored by the rats are actually the ones with lower caloric density -- the ones with higher sugar percentages by weight. I want to check this by repeating the same analysis pipeline from the data in grams.
+
+# Weight Data
+
+## Data preparation
+
+```{r read data grams}
+#Vector for column names and diet names
+column_names <- c("rat", "zero", "twenty", "forty", "sixty", "eighty", "hundred", "h2o", "spill", "condition", "day")
+diet_names <- c("zero", "twenty", "forty", "sixty", "eighty", "hundred")
+
+#Read in data
+data_grams <- read_excel("ID Test Data.xlsx", sheet = 5, range = "A3:K50", col_names = column_names)
+
+#turn negatives to zeroes
+data_grams_filtered <- data_grams
+data_grams_filtered[data_grams_filtered < 0] <- 0
+
+#Pivot long
+data_grams_long <- data_grams_filtered %>%
+  pivot_longer(cols = diet_names, names_to = "diet", values_to = "grams")
+
+#Drop spill and water
+data_grams_long_foodOnly <- data_grams_long %>%
+  subset(select = -c(h2o, spill))
+```
+
+## Basic visualizations
+
+```{r intake grams by condition}
+#mean calories for each drug condition (collapsed across days, conditions, and rats)
+meanGrams_groupedByDrug <- data_grams_long_foodOnly %>%
+  group_by(condition) %>%
+  summarise(mean(grams))
+
+#SD's
+SDGrams_groupedByDrug <- data_grams_long_foodOnly %>%
+  group_by(condition) %>%
+  summarise(sd(grams))
+
+#Merge data frames
+data_grams_groupedByDrug <- inner_join(meanGrams_groupedByDrug,
+                                 SDGrams_groupedByDrug, 
+                                by = "condition" ) %>%
+  rename("mean_grams" = "mean(grams)",
+         "sd_grams" = "sd(grams)")
+
+data_grams_groupedByDrug$condition <- factor(data_grams_groupedByDrug$condition,
+                                       levels = c("HI", "LO", "VEH", "NAL"))
+
+#Make plot
+data_grams_groupedByDrug %>%
+  ggplot(mapping = aes(x = condition,
+                       y = mean_grams,
+                       fill = condition)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_grams - sd_grams,
+                    ymax = mean_grams + sd_grams))
+```
+
+```{r intake by rat grams}
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanGrams_groupedByRat <- data_grams_long_foodOnly %>%
+  group_by(rat) %>%
+  summarise(mean(grams))
+
+#SD's
+SDGrams_groupedByRat <- data_grams_long_foodOnly %>%
+  group_by(rat) %>%
+  summarise(sd(grams))
+
+#Merge data frames
+data_grams_groupedByRat <- inner_join(meanGrams_groupedByRat,
+                                 SDGrams_groupedByRat, 
+                                by = "rat" ) %>%
+  rename("mean_grams" = "mean(grams)",
+         "sd_grams" = "sd(grams)")
+
+rat_names <- c("ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID8", "ID9", "ID10", "ID11", "ID12")
+data_grams_groupedByRat$rat <- factor(data_grams_groupedByRat$rat,
+                                       levels = rat_names)
+
+#Make plot
+data_grams_groupedByRat %>%
+  ggplot(mapping = aes(x = rat,
+                       y = mean_grams,
+                       fill = rat)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_grams - sd_grams,
+                    ymax = mean_grams + sd_grams))
+```
+
+```{r intake by diet grams}
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanGrams_groupedByDiet <- data_grams_long_foodOnly %>%
+  group_by(diet) %>%
+  summarise(mean(grams))
+
+#SD's
+SDGrams_groupedByDiet <- data_grams_long_foodOnly %>%
+  group_by(diet) %>%
+  summarise(sd(grams))
+
+#Merge data frames
+data_grams_groupedByDiet <- inner_join(meanGrams_groupedByDiet,
+                                 SDGrams_groupedByDiet, 
+                                by = "diet" ) %>%
+  rename("mean_grams" = "mean(grams)",
+         "sd_grams" = "sd(grams)")
+
+data_grams_groupedByDiet$diet <- factor(data_grams_groupedByDiet$diet,
+                                       levels = diet_names)
+
+#Make plot
+data_grams_groupedByDiet %>%
+  ggplot(mapping = aes(x = diet,
+                       y = mean_grams,
+                       fill = diet)) +
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean_grams - sd_grams,
+                    ymax = mean_grams + sd_grams))
+```
+
+## Inferential Stats
+
+```{r hypothesis test grams}
+res.aovGrams = anova_test(
+  data = data_grams_long_foodOnly, dv = grams, wid = rat,
+  within = c(condition, diet)
+)
+get_anova_table(res.aovGrams)
+
+#trying it a different way
+exp2Grams <- aov(grams ~ diet*condition + Error(rat/(diet*condition)), data = data_grams_long_foodOnly)
+summary(exp2Grams) 
+
+ggboxplot(data_grams_long_foodOnly,
+          x = "diet", y = "grams",
+          color = "condition"
+          )
+```
+
+So the story in terms of grams looks just about the same as it does in terms of calories. However, there's enough variability in the data that two possibilities are jumping into my head:
+
+1.) Each individual rat may have very different preferences. Some may be sugar-preferrers while others are fat-preferrers
+2.) Outliers may be driving some of the results we're seeing. For instance, we had one rat, eat 23 grams of the 80% diet on one day, and another ate 17. I feel like we need to account for that somehow.
+
+Before I try to tackle this, however, let's get into some post-hoc analyses.
+
+# Post Hoc Analyses
+
+The challenge throughout this section is going to be to capture what I want to see without running a million tests. To a certain extent I'm not sure that'll be possible, but I do think I should make an effort.
+
+Looking back at my prospectus, the questions I want to answer are:
+
+1.) What ratio do the rats prefer (should be a replication from experiment 1)
+
+2.) Do the rats prefer blend diets to the single nutrient ones (again, a replication)
+
+3.) Does opioid blockade shift diet preference to lower fat or abolish preferences altogether?
+
+4.) Does opioid stimulation shift preference to higher fat?
+
+5.) Do opioids overall increase consumption?
+
+6.) Does naltrexone overall decrease consumption?
+
+## Question 1
+
+To figure out which diets the rats preferred overall, let's first visualize the overall pattern. We actually did a similar plot earlier, but lets try a boxplot this time:
+
+```{r fav diet viz}
+#For calories
+data_long_foodOnly %>%
+ggplot(mapping = aes(x = factor(diet, level = diet_names), 
+                     y = kcal, fill = diet)) + 
+         geom_boxplot()
+
+#For grams
+data_grams_long_foodOnly %>%
+ggplot(mapping = aes(x = factor(diet, level = diet_names), 
+                     y = grams, fill = diet)) + 
+         geom_boxplot()
+```
+
+And now that we have a visual, we can run pairwise paired t-tests between diet conditions. To be super conservative, let's start with Bonferroni corrections
+
+```{r q1}
+#By calories
+pairwiseKcal <- data_long_foodOnly %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+pairwiseKcal
+
+#By grams
+pairwiseGrams <- data_grams_long_foodOnly %>%
+  pairwise_t_test(grams~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni")
+pairwiseGrams
+```
+So even being as conservative as possible (which we may decide is what we want) the 80% diet is significantly more consumed than all other diets except the 60%, and the 60% diet is significantly preferred over the 0%, 40%, and 100% diets.There apparently isn't a significant difference between the 20% and 60% diets, however, which actually makes me want to take a look at the effect sizes we're dealing with:
+
+```{r q1 effect size}
+#By calories
+data_long_foodOnly %>%
+  cohens_d(kcal~diet, paired = TRUE)
+
+#By grams
+data_grams_long_foodOnly %>%
+  cohens_d(grams~diet, paired = TRUE)
+```
+
+So they're medium to large, which is encouraging to see. Based on these analyses, I feel pretty comfortable concluding that the 80% diet was the favorite on average.
+
+## Question 2
+
+Based on the plots we've generated, it's pretty clear that the rats preferred blend diets on average over single-nutrient ones. However, just to be above reproach I want to do a formal comparison. Time for fun with contrasts! Assigning a coefficient of 1/4 for all the blend diets and a coefficient of -1/2 for the single diet conditions should give us what we want.
+
+First I have to do some R trickery to force the software to handle my variables the way I want it to:
+
+```{r as factor}
+data_long_foodOnly_factor <- data_long_foodOnly
+
+names <- c(1:4)
+
+data_long_foodOnly_factor[,names] <- lapply(data_long_foodOnly_factor[,names], factor)
+
+data_long_foodOnly_factor$rat <- factor(data_long_foodOnly_factor$rat, levels = rat_names)
+
+data_long_foodOnly_factor$diet <- factor(data_long_foodOnly_factor$diet, levels = diet_names)
+
+data_long_foodOnly_factor$condition <- factor(data_long_foodOnly_factor$condition, levels = condition_names)
+
+str(data_long_foodOnly_factor)
+```
+
+And now I'm going to give it a shot:
+
+```{r q2 contrasts}
+#Set contrast coefficient matrix
+#By kcals
+options(contrasts = c("contr.sum", "contr.poly"))
+kcal.aov <- ezANOVA(data = data_long_foodOnly_factor,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet, condition),
+                    return_aov = TRUE,
+                    type = 1)
+kcal.em <- emmeans(kcal.aov$aov, ~diet * condition)
+
+contrast_names <- list(c(2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2))
+
+contrast(kcal.em,
+         method = contrast_names)
+```
+
+So if I did this right, then we did find the effect we were looking for. However, I'm a little unsure of this, so I may double-check in SPSS just for peace of mind.
+
+## Question 3
+
+To go about answering this question, we can start by filtering the data to only include the naltrexone and saline groups:
+
+```{r q3 filter}
+data_long_foodOnly_factor_q3 <- data_long_foodOnly_factor %>%
+  filter(condition == "VEH" | condition == "NAL")
+```
+
+And now we can visualize:
+
+```{r q3 viz}
+ggboxplot(data_long_foodOnly_factor_q3,
+          x = "condition", y = "kcal",
+          color = "diet"
+          )
+```
+
+So just visually, it looks like the trend of consumption rising as sugar content increases holds for both the vehicle and naltrexone groups. 
+
+Since we have a significant omnibus effect, I feel comfortable proceeding with looking at significant one-way effects within each drug category. We can start by filtering to create datasets for each specific drug group:
+
+```{r q3 more filters}
+# VEH dataset
+data_long_foodOnly_factor_veh <- data_long_foodOnly_factor %>%
+  filter(condition == "VEH")
+
+#NAL dataset
+data_long_foodOnly_factor_nal <- data_long_foodOnly_factor %>%
+  filter(condition == "NAL")
+```
+
+Now we can run one-way ANOVA's on these data:
+
+```{r q3 one-way ANOVAs}
+#VEH
+res.aovVeh = anova_test(
+  data = data_long_foodOnly_factor_veh, dv = kcal, wid = rat,
+  within = diet)
+get_anova_table(res.aovVeh)
+
+#NAL
+res.aovNal = anova_test(
+  data = data_long_foodOnly_factor_nal, dv = kcal, wid = rat,
+  within = diet)
+get_anova_table(res.aovNal)
+```
+
+So we have an omnibus effect of diet on consumption for the vehicle condition, but not the naltrexone group. Within the vehicle condition, we can proceed with pairwise comparisons:
+
+```{r q3 pairwise veh}
+#Significance
+data_long_foodOnly_factor_veh %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly_factor_veh %>%
+  cohens_d(kcal~diet, paired = TRUE)
+```
+
+So overall, it appears that the sugarier diets are favored in the vehicle group, but these preferences are abolished (or at least are drastically reduced) in the naltrexone condition.
+
+## Question 4
+
+I think I can repeat this pipeline to compare what happens between the DAMGO groups and the vehicle group.
+
+Always a good idea to start with visualization:
+
+```{r q4}
+data_long_foodOnly_factor_q3 <- data_long_foodOnly_factor %>%
+  filter(condition == "HI" | condition == "LO" | condition == "VEH")
+
+ggboxplot(data_long_foodOnly_factor_q3,
+          x = "condition", y = "kcal",
+          color = "diet"
+          )
+```
+
+Again, the significant omnibus effect allows us to run simple one-way ANOVAs for the HI and LO dose groups:
+
+```{r q4 ANOVAs}
+##Filter out HI and LO groups
+# HI dataset
+data_long_foodOnly_factor_hi <- data_long_foodOnly_factor %>%
+  filter(condition == "HI")
+
+#LO dataset
+data_long_foodOnly_factor_lo <- data_long_foodOnly_factor %>%
+  filter(condition == "LO")
+
+##ANOVAs
+#HI
+res.aovHi = anova_test(
+  data = data_long_foodOnly_factor_hi, dv = kcal, wid = rat,
+  within = diet)
+get_anova_table(res.aovHi)
+
+#LO
+res.aovLo = anova_test(
+  data = data_long_foodOnly_factor_lo, dv = kcal, wid = rat,
+  within = diet)
+get_anova_table(res.aovLo)
+
+#VEH (just so I don't have to scroll back up)
+get_anova_table(res.aovVeh)
+```
+
+So we get significant omnibus diet effects for all 3 drug groups (even though the omnibus effect for the low dose is just barely significant). Let's run pairwise comparisons now:
+
+```{r q4 pairwise}
+## HI
+#Significance
+data_long_foodOnly_factor_hi %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly_factor_hi %>%
+  cohens_d(kcal~diet, paired = TRUE)
+
+## LO
+#Significance
+data_long_foodOnly_factor_lo %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly_factor_lo %>%
+  cohens_d(kcal~diet, paired = TRUE)
+
+## VEH
+#Significance
+data_long_foodOnly_factor_veh %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly_factor_veh %>%
+  cohens_d(kcal~diet, paired = TRUE)
+
+```
+
+So without this getting super tedious, it looks like eighty percent takes it across all the two DAMGO conditions as well.
+
+## Questions 5 & 6
+
+Keeping in mind that we have a significant main effect of drug on consumption, we can graph consumption of each diet:
+
+```{r q5 viz}
+data_long_foodOnly %>%
+ggplot(mapping = aes(x = factor(condition, level = condition_names), 
+                     y = kcal, fill = condition)) + 
+         geom_boxplot()
+```
+
+And we can then do pairwise paired t-tests:
+
+```{r q5 pairiwse}
+# Significance
+data_long_foodOnly %>%
+  pairwise_t_test(kcal~condition, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly %>%
+  cohens_d(kcal~condition, paired = TRUE)
+```
+So it looks like the high dose did increase consumption over the vehicle dose, but the low dose didn't, and naltrexone didn't significantly lower it. If anything, it looks like drug didn't lead to huge group level changes, but more just affected the amount of variability across groups.
+
+# Additional analysis
+
+We've seen so far that drug mildly affects the average amount consumed in general, and that DAMGO exacerbates the preference for the 80% diet while naltrexone flattens it. However, one possibility I want to explore is whether different things are happening for animals that prefer fat vs. those that prefer sugar. This suggests two questions:
+
+7.) Are there differences in baseline preference between animals, and if so, how do we determine those?
+
+8.) Does the pattern of data we obtain differ between fat and sugar preferrers?
+
+In my prospectus, I mention a paper (Gosnell et al., 1990), that describes a procedure for relating baseline preferences to drug effects. I'm going to try to follow their procedure here.
+
+## Question 7
+
+As a super simple first pass, I think I can start by filtering the calorie data such that we're only looking at the vehicle condition and we're only including the two pure macronutrient conditions:
+
+```{r pure macros}
+data_long_foodOnly_pure <- data_long_foodOnly %>%
+  filter(condition == "VEH") %>%
+  filter(diet == "zero" | diet == "hundred")
+
+data_long_foodOnly_pure %>%
+  ggplot(mapping = aes(x = rat,
+                       y = kcal,
+                       fill = diet)) + 
+  geom_col(position = "dodge")
+```
+
+And it's only at this point that I realize the kcal data probably isn't the best to be looking at here, because fat is more the twice as caloric as sugar. Let's repeat the analysis with weight data:
+
+```{r pure macros grams}
+data_grams_long_foodOnly_pure <- data_grams_long_foodOnly %>%
+  filter(condition == "VEH") %>%
+  filter(diet == "zero" | diet == "hundred")
+
+data_grams_long_foodOnly_pure %>%
+  ggplot(mapping = aes(x = rat,
+                       y = grams,
+                       fill = diet)) + 
+  geom_col(position = "dodge")
+```
+
+This still feels like it's giving us an incomplete picture though. It actually looks like the Gosnell paper had dedicated days from which they detemined baseline preferences. For our data, I can see a few possibilities for which days to use:
+
+1.) Some average of the diet acclimation period. The benefit is that the rats are totally injection naive at this point. Con is that since rats weren't acclimated to diets in the same order, relative experience in the chambers between fat and sugar diets varies across rats.
+
+2.) An average of the training days where rats were given all 6 diets
+
+3.) The maintenance days in between injections
+
+My gut is telling me that the training days with all 6 diets is the best way to go, so I'm going to start down that road and see what happens.
+
+Let's load our data:
+
+```{r read training data}
+##Read in data
+
+
+
+#kcal
+trainingdata_kcal <- read_excel("ID Training Data copy.xlsx", sheet = 32, range = "A20:I31", col_names = column_names[1:9])
+
+trainingdata_kcal_filtered <- trainingdata_kcal
+trainingdata_kcal_filtered[trainingdata_kcal_filtered < 0] <- 0
+
+trainingdata_kcal_filtered_long <- trainingdata_kcal_filtered %>%
+  pivot_longer(cols = diet_names, names_to = "diet", values_to = "kcal") %>%
+  subset(select = -c(h2o, spill))
+
+
+
+#grams
+trainingdata_grams <- read_excel("ID Training Data copy.xlsx", sheet = 32, range = "A3:I14", col_names = column_names[1:9])
+
+trainingdata_grams_filtered <- trainingdata_grams
+trainingdata_grams_filtered[trainingdata_grams_filtered < 0] <- 0
+
+trainingdata_grams_filtered_long <- trainingdata_grams_filtered %>%
+  pivot_longer(cols = diet_names, names_to = "diet", values_to = "grams") %>%
+  subset(select = -c(h2o, spill))
+```
+
+And filter for pure fat and pure sugar:
+
+```{r training 2}
+trainingdata_kcal_filtered_long_pure <- trainingdata_kcal_filtered_long %>%
+  filter(diet == "zero" | diet == "hundred")
+
+trainingdata_grams_filtered_long_pure <- trainingdata_grams_filtered_long %>%
+  filter(diet == "zero" | diet == "hundred")
+```
+
+And finally we can visualize
+
+```{r training viz}
+trainingdata_kcal_filtered_long_pure %>%
+  ggplot(mapping = aes(x = rat,
+                       y = kcal,
+                       fill = diet)) + 
+  geom_col(position = "dodge")
+
+trainingdata_grams_filtered_long_pure %>%
+  ggplot(mapping = aes(x = rat,
+                       y = grams,
+                       fill = diet)) + 
+  geom_col(position = "dodge")
+```
+
+Again, the weight data I think is the best way to go here. Either way, I think a viable strategy here is just to divide rats into fat and sugar preferrers based on the relative amounts they ate here. In that case:
+
+Fat preferrers: ID1, ID12, ID3, ID5, ID9
+
+Sugar preferrers: ID10, ID11, ID2, ID4, ID6, ID7, ID8
+
+Lastly, just to get a sense of each individual rat's baseline preferences across all diets, I just want to directly plot that as a bar graph:
+
+```{r test2}
+trainingdata_grams_filtered_long$diet <- factor(trainingdata_grams_filtered_long$diet,
+                                       levels = diet_names)
+
+trainingdata_grams_filtered_long$rat <- factor(trainingdata_grams_filtered_long$rat,
+                                       levels = rat_names)
+
+trainingdata_grams_filtered_long %>%
+  ggplot(mapping = aes(x = diet,
+                       y = grams,
+                       fill = diet)) + 
+  geom_col(position = "dodge") + 
+  facet_wrap(~rat)
+```
+
+Based on this, I actually do think a composite measure of baseline preference that accounts of all diets is the best gauge of what the rats actually like. Some of them (like ID12) clearly preferred the highly sugary 80% diet, but didn't actually eat much of the pure sugar. If we quantified his baseline preferences just from pure sugar, therefore, we'd probably miss out on what his preferences actually were.
+
+## Question 8
+
+### Part 1
+
+Now let's try to repeat the analyses from Gosnell et al. In order to repeat their correlation analyses, I need data frames for each non-vehicle diet that contains the following variables:
+
+- Average baseline fat consumption
+- Average baseline carbohydrate consumption
+- Average baseline for each individual diet
+- A column for each diet reflecting the effect of the drug (i.e., the difference between consumption of the that diet for the current drug dose vs. vehicle)
+
+This is going to be hard, but let's give it a shot.
+
+We already have a dataset containing each rat's baseline preferences for each diet, so we can start from there by adding composite fat and sugar variables:
+
+```{r fat and sugar preferences}
+baseline_preferences_grams <- trainingdata_grams %>%
+  subset(select = -c(h2o, spill)) %>%
+  mutate(
+    fat = zero + (twenty*0.8) + (forty*0.6) + (sixty*0.4) + (eighty*0.2),
+    sugar = hundred + (eighty*0.8) + (sixty*0.6) + (forty*0.4) + (twenty*0.2)
+  )
+```
+
+Now we need to make data frames containing intakes for each drug group:
+
+```{r intakes}
+veh_intakes_grams <- data_grams_filtered %>%
+  filter(condition == "VEH") %>%
+  subset(select = -c(condition, day)) %>%
+  rename(veh_zero = zero,
+         veh_twenty = twenty,
+         veh_forty = forty,
+         veh_sixty = sixty,
+         veh_eighty = eighty, 
+         veh_hundred = hundred,
+         veh_h2o = h2o,
+         veh_spill = spill)
+
+hi_intakes_grams <- data_grams_filtered %>%
+  filter(condition == "HI") %>%
+  subset(select = -c(condition, day)) %>%
+  rename(hi_zero = zero,
+         hi_twenty = twenty,
+         hi_forty = forty,
+         hi_sixty = sixty,
+         hi_eighty = eighty, 
+         hi_hundred = hundred,
+         hi_h2o = h2o,
+         hi_spill = spill)
+
+lo_intakes_grams <- data_grams_filtered %>%
+  filter(condition == "LO") %>%
+  subset(select = -c(condition, day)) %>%
+  rename(lo_zero = zero,
+         lo_twenty = twenty,
+         lo_forty = forty,
+         lo_sixty = sixty,
+         lo_eighty = eighty, 
+         lo_hundred = hundred,
+         lo_h2o = h2o,
+         lo_spill = spill)
+
+nal_intakes_grams <- data_grams_filtered %>%
+  filter(condition == "NAL") %>%
+  subset(select = -c(condition, day)) %>%
+  rename(nal_zero = zero,
+         nal_twenty = twenty,
+         nal_forty = forty,
+         nal_sixty = sixty,
+         nal_eighty = eighty, 
+         nal_hundred = hundred,
+         nal_h2o = h2o,
+         nal_spill = spill)
+```
+
+And we need to join the vehicle data frame with that of each other drug dose:
+
+```{r join}
+hi_effects_grams <- full_join(veh_intakes_grams,
+                              hi_intakes_grams,
+                              by = "rat")
+
+lo_effects_grams <- full_join(veh_intakes_grams,
+                              lo_intakes_grams,
+                              by = "rat")
+
+nal_effects_grams <- full_join(veh_intakes_grams,
+                              nal_intakes_grams,
+                              by = "rat")
+```
+
+And now we can calculate drug effects by subtracting the intake of each diet on vehicle with the intake of the same diet on drug:
+
+```{r drug effects}
+hi_effects_grams <- hi_effects_grams %>%
+  mutate(zero_effect = hi_zero - veh_zero,
+         twenty_effect = hi_twenty - veh_twenty,
+         forty_effect = hi_forty - veh_forty,
+         sixty_effect = hi_sixty - veh_sixty,
+         eighty_effect = hi_eighty - veh_eighty,
+         hundred_effect = hi_hundred - veh_hundred,
+         h2o_effect = hi_h2o - veh_h2o,
+         spill_effect = hi_spill - veh_spill)
+
+lo_effects_grams <- lo_effects_grams %>%
+  mutate(zero_effect = lo_zero - veh_zero,
+         twenty_effect = lo_twenty - veh_twenty,
+         forty_effect = lo_forty - veh_forty,
+         sixty_effect = lo_sixty - veh_sixty,
+         eighty_effect = lo_eighty - veh_eighty,
+         hundred_effect = lo_hundred - veh_hundred,
+         h2o_effect = lo_h2o - veh_h2o,
+         spill_effect = lo_spill - veh_spill)
+
+nal_effects_grams <- nal_effects_grams %>%
+  mutate(zero_effect = nal_zero - veh_zero,
+         twenty_effect = nal_twenty - veh_twenty,
+         forty_effect = nal_forty - veh_forty,
+         sixty_effect = nal_sixty - veh_sixty,
+         eighty_effect = nal_eighty - veh_eighty,
+         hundred_effect = nal_hundred - veh_hundred,
+         h2o_effect = nal_h2o - veh_h2o,
+         spill_effect = nal_spill - veh_spill)
+```
+
+I have a feeling it'll also make our lives easier if we also join the preference data to each og the effect data frames too:
+
+```{r join effects and preferences}
+hi_effects_grams_full <- hi_effects_grams %>%
+  left_join(baseline_preferences_grams,
+            by = "rat") %>%
+  rename(baseline_zero = zero,
+         baseline_twenty = twenty,
+         baseline_forty = forty,
+         baseline_sixty = sixty,
+         baseline_eighty = eighty, 
+         baseline_hundred = hundred,
+         baseline_fat = fat,
+         baseline_sugar = sugar)
+
+lo_effects_grams_full <- lo_effects_grams %>%
+  left_join(baseline_preferences_grams,
+            by = "rat") %>%
+  rename(baseline_zero = zero,
+         baseline_twenty = twenty,
+         baseline_forty = forty,
+         baseline_sixty = sixty,
+         baseline_eighty = eighty, 
+         baseline_hundred = hundred,
+         baseline_fat = fat,
+         baseline_sugar = sugar)
+
+nal_effects_grams_full <- nal_effects_grams %>%
+  left_join(baseline_preferences_grams,
+            by = "rat") %>%
+  rename(baseline_zero = zero,
+         baseline_twenty = twenty,
+         baseline_forty = forty,
+         baseline_sixty = sixty,
+         baseline_eighty = eighty, 
+         baseline_hundred = hundred,
+         baseline_fat = fat,
+         baseline_sugar = sugar)
+```
+
+And now we can actually try to run the correlations! Let's start with the high condition:
+
+```{r hi correlations}
+hi.rcorr <- rcorr(as.matrix(hi_effects_grams_full[18:33]))
+#hi.rcorr
+corrplot(hi.rcorr$r)
+```
+
+Now low:
+
+```{r lo correlations}
+lo.rcorr <- rcorr(as.matrix(lo_effects_grams_full[18:33]))
+#lo.rcorr
+corrplot(lo.rcorr$r)
+```
+
+And naltrexone:
+
+```{r nal correlations}
+nal.rcorr <- rcorr(as.matrix(nal_effects_grams_full[18:33]))
+#nal.rcorr
+corrplot(nal.rcorr$r)
+```
+
+In the interest of not running a billion significance tests for these correlations, I'm going to draw a subset of the ones I'm most interested in and type them into excel. The file is called "Gosnell results".
+
+The long and short of it is that this analysis doesn't suggest that baseline preferences have anything to do with the effects of DAMGO However, I'm going to try to get at this question one more way before I give it up.
+
+Let's imagine you're a rat in this study, and you've been eating these diets for a while. I think it's pretty unlikely that the stored representation you have of the diets resembles a thought like "I like fat X amount and sugar Y amount, and will therefore eat from all of the diets in weighted proportion to these preferences." Instead, I think a much more straightforward way of thinking about it would be something closer to "The sixty percent diet is my favorite, so I'm going to beeline to that one." So, if DAMGO is really working to exacerbate baseline preferences, what you would expect would be an amplification of that effect. Therefore, there should be a positive correlation between intake of each rat's favorite diet and the effect of morphine on that diet. Similarly, the correlation should be negative for each rat's least favorite diet.
+
+### Part 2
+
+We've already calculated and plotted each rat's baseline preferences:
+
+```{r baseline preferences 2}
+trainingdata_grams_filtered_long %>%
+  ggplot(mapping = aes(x = diet,
+                       y = grams,
+                       fill = diet)) + 
+  geom_col(position = "dodge") + 
+  facet_wrap(~rat,
+             ncol = 3)
+```
+And it's at this point that I realize: almost everyone's favorite diet was the 80%. The DAMGO effect being dependent on baseline preferences is only cool if the rats have *different* baseline preferences. If their preferences are all the same, then you would expect exactly what we've seen -- higher doses of DAMGO causing increased consumption of that diet.
+
+This may just be luck of the draw that we got animals who all happened to be 80% preferrers. Alternatively, it may be the case that all rats would prefer 80%. Our dataset doesn't let us distinguish, but it does reinforce that DAMGO increases consumption of preferred diets.
+
+And just like that, I think we're done with experiment 2 analysis!
