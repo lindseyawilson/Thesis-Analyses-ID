@@ -175,6 +175,15 @@ get_anova_table(res.aov)
 #trying it a different way
 exp2 <- aov(kcal ~ diet*condition + Error(rat/(diet*condition)), data = data_long_foodOnly)
 summary(exp2)
+
+#And a third way because the first two don't match
+kcals.aov <- ezANOVA(data = data_long_foodOnly,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet, condition),
+                    return_aov = TRUE,
+                    type = 2)
+kcals.aov$ANOVA
 ```
 
 So these two methods of calculation slightly disagree about the p-value for the main effect of drug, but they both clearly show two main effects and an interaction. The p-values are actually suspiciously small here; we might have to circle back to this.
@@ -186,6 +195,53 @@ ggboxplot(data_long_foodOnly,
           x = "diet", y = "kcal",
           color = "condition"
           )
+
+
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanKcals_groupedByDiet <- data_long_foodOnly %>%
+  group_by(diet, condition) %>%
+  summarise(kcal = mean(kcal))
+
+#SD's
+SEKcals_groupedByDiet <- data_long_foodOnly %>%
+  group_by(diet, condition) %>%
+  summarise(n = n(),
+            sd = sd(kcal),
+            se = sd/sqrt(n))
+
+#Merge data frames
+data_groupedByDiet <- inner_join(meanKcals_groupedByDiet,
+                                 SEKcals_groupedByDiet, 
+                                 by = c("diet", "condition"))
+  
+
+data_groupedByDiet$diet <- factor(data_groupedByDiet$diet,
+                                       levels = diet_names)
+
+#Make plot
+my_x_labels <- setNames(c("High DAMGO", "Low DAMGO", "Naltrexone", "Saline"),
+                        c("HI", "LO", "NAL", "VEH"))
+my_fill_labels <- setNames(c("0%", "20%", "40%", "60%", "80%", "100%"),
+                           diet_names)
+
+
+
+data_groupedByDiet %>%
+  ggplot(mapping = aes(x = condition,
+                       y = kcal,
+                       fill = diet,
+                       ymin = kcal - se,
+                       ymax = kcal + se)) +
+  geom_col(position = "dodge") + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) + 
+  scale_x_discrete(labels = my_x_labels) +
+  scale_fill_discrete(labels = my_fill_labels) +
+  labs(x = "Drug Condition",
+       y = "Intake (kcal)",
+       fill = "Diet (% sugar)")
+
 ```
 
 So at least descriptively, this looks like good news! Consumption was highest of the sixty and eighty percent diet, and within each group, drugs look like they behaved the way we were expecting. Additionally, the significant interaction suggests that the drug effect was diet-dependent; the high dose of DAMGO spiked calorie intake a lot more for the eighty percent diet than it did for any of the others.
@@ -330,6 +386,15 @@ ggboxplot(data_grams_long_foodOnly,
           x = "diet", y = "grams",
           color = "condition"
           )
+
+#And a third way because the first two don't match
+grams.aov <- ezANOVA(data = data_grams_long_foodOnly,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet, condition),
+                    return_aov = TRUE,
+                    type = 2)
+grams.aov$ANOVA
 ```
 
 So the story in terms of grams looks just about the same as it does in terms of calories. However, there's enough variability in the data that two possibilities are jumping into my head:
@@ -488,16 +553,22 @@ Now we can run one-way ANOVA's on these data:
 
 ```{r q3 one-way ANOVAs}
 #VEH
-res.aovVeh = anova_test(
-  data = data_long_foodOnly_factor_veh, dv = kcal, wid = rat,
-  within = diet)
-get_anova_table(res.aovVeh)
+veh.aov <- ezANOVA(data = data_long_foodOnly_factor_veh,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+veh.aov$ANOVA
 
 #NAL
-res.aovNal = anova_test(
-  data = data_long_foodOnly_factor_nal, dv = kcal, wid = rat,
-  within = diet)
-get_anova_table(res.aovNal)
+nal.aov <- ezANOVA(data = data_long_foodOnly_factor_nal,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+nal.aov$ANOVA
 ```
 
 So we have an omnibus effect of diet on consumption for the vehicle condition, but not the naltrexone group. Within the vehicle condition, we can proceed with pairwise comparisons:
@@ -546,19 +617,26 @@ data_long_foodOnly_factor_lo <- data_long_foodOnly_factor %>%
 
 ##ANOVAs
 #HI
-res.aovHi = anova_test(
-  data = data_long_foodOnly_factor_hi, dv = kcal, wid = rat,
-  within = diet)
-get_anova_table(res.aovHi)
+hi.aov <- ezANOVA(data = data_long_foodOnly_factor_hi,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+hi.aov$ANOVA
+
 
 #LO
-res.aovLo = anova_test(
-  data = data_long_foodOnly_factor_lo, dv = kcal, wid = rat,
-  within = diet)
-get_anova_table(res.aovLo)
+lo.aov <- ezANOVA(data = data_long_foodOnly_factor_lo,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+lo.aov$ANOVA
 
 #VEH (just so I don't have to scroll back up)
-get_anova_table(res.aovVeh)
+veh.aov$ANOVA
 ```
 
 So we get significant omnibus diet effects for all 3 drug groups (even though the omnibus effect for the low dose is just barely significant). Let's run pairwise comparisons now:
