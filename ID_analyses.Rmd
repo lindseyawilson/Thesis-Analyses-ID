@@ -23,6 +23,7 @@ library(emmeans)
 library(car)
 library(Hmisc)
 library(corrplot)
+library(ggsignif)
 ```
 
 And let's read our excel data in
@@ -65,31 +66,40 @@ Now lets try visualizing things before we do any inferential analyses. For a sta
 #mean calories for each drug condition (collapsed across days, conditions, and rats)
 meanKcals_groupedByDrug <- data_long_foodOnly %>%
   group_by(condition) %>%
-  summarise(mean(kcal))
+  summarise(kcal = mean(kcal))
 
 #SD's
 SDKcals_groupedByDrug <- data_long_foodOnly %>%
   group_by(condition) %>%
-  summarise(sd(kcal))
+  summarise(sd = sd(kcal),
+            n = n(),
+            se = sd/sqrt(n))
 
 #Merge data frames
 data_groupedByDrug <- inner_join(meanKcals_groupedByDrug,
                                  SDKcals_groupedByDrug, 
-                                by = "condition" ) %>%
-  rename("mean_kcal" = "mean(kcal)",
-         "sd_kcal" = "sd(kcal)")
+                                by = "condition" )
 
 data_groupedByDrug$condition <- factor(data_groupedByDrug$condition,
                                        levels = c("HI", "LO", "VEH", "NAL"))
 
 #Make plot
+my_drug_labels <- setNames(c("High DAMGO", "Low DAMGO", "Naltrexone", "Saline"),
+                        c("HI", "LO", "NAL", "VEH"))
+
 data_groupedByDrug %>%
   ggplot(mapping = aes(x = condition,
-                       y = mean_kcal,
-                       fill = condition)) +
-  geom_col() + 
-  geom_errorbar(aes(ymin = mean_kcal - sd_kcal,
-                    ymax = mean_kcal + sd_kcal))
+                       y = kcal,
+                       fill = condition,
+                       ymin = kcal - se,
+                       ymax = kcal + se)) +
+  geom_col(show.legend = FALSE) + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) +
+  scale_x_discrete(labels = my_drug_labels) +
+  labs(x = "Drug Condition",
+       y = "Intake (kcal)") 
 ```
 
 And to get a sense of between-subject variability, lets do a similar analysis grouping by rat
@@ -132,31 +142,41 @@ And just as a rough replication of the last study, lets group by diet too:
 #mean calories for each rat (collapsed across days, conditions, and drug condition)
 meanKcals_groupedByDiet <- data_long_foodOnly %>%
   group_by(diet) %>%
-  summarise(mean(kcal))
+  summarise(kcal = mean(kcal))
 
 #SD's
-SDKcals_groupedByDiet <- data_long_foodOnly %>%
+SEKcals_groupedByDiet <- data_long_foodOnly %>%
   group_by(diet) %>%
-  summarise(sd(kcal))
+  summarise(sd = sd(kcal),
+            n = n(),
+            se = sd/sqrt(n))
 
 #Merge data frames
 data_groupedByDiet <- inner_join(meanKcals_groupedByDiet,
-                                 SDKcals_groupedByDiet, 
-                                by = "diet" ) %>%
-  rename("mean_kcal" = "mean(kcal)",
-         "sd_kcal" = "sd(kcal)")
+                                 SEKcals_groupedByDiet, 
+                                by = "diet" )
 
 data_groupedByDiet$diet <- factor(data_groupedByDiet$diet,
                                        levels = diet_names)
 
 #Make plot
+my_diet_labels <- setNames(c("0%", "20%", "40%", "60%", "80%", "100%"),
+                           diet_names)
+
+
 data_groupedByDiet %>%
   ggplot(mapping = aes(x = diet,
-                       y = mean_kcal,
-                       fill = diet)) +
-  geom_col() + 
-  geom_errorbar(aes(ymin = mean_kcal - sd_kcal,
-                    ymax = mean_kcal + sd_kcal))
+                       y = kcal,
+                       fill = diet,
+                       ymin = kcal - se,
+                       ymax = kcal + se)) +
+  geom_col(show.legend = FALSE) + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) +
+  scale_x_discrete(labels = my_diet_labels) +
+  labs(x = "Diet (% sugar by weight)",
+       y = "Intake (kcal)")
 ```
 
 So here it looks like on average the eighty percent diet was a hit. However, it seems like across all of these dimensions, as overall caloric intake increases, the variation in intake also increases.
@@ -279,19 +299,19 @@ data_grams_long_foodOnly <- data_grams_long %>%
 #mean calories for each drug condition (collapsed across days, conditions, and rats)
 meanGrams_groupedByDrug <- data_grams_long_foodOnly %>%
   group_by(condition) %>%
-  summarise(mean(grams))
+  summarise(grams = mean(grams))
 
 #SD's
 SDGrams_groupedByDrug <- data_grams_long_foodOnly %>%
   group_by(condition) %>%
-  summarise(sd(grams))
+  summarise(sd = sd(grams),
+            n = n(),
+            se = sd/sqrt(n))
 
 #Merge data frames
 data_grams_groupedByDrug <- inner_join(meanGrams_groupedByDrug,
                                  SDGrams_groupedByDrug, 
-                                by = "condition" ) %>%
-  rename("mean_grams" = "mean(grams)",
-         "sd_grams" = "sd(grams)")
+                                by = "condition" )
 
 data_grams_groupedByDrug$condition <- factor(data_grams_groupedByDrug$condition,
                                        levels = c("HI", "LO", "VEH", "NAL"))
@@ -299,11 +319,17 @@ data_grams_groupedByDrug$condition <- factor(data_grams_groupedByDrug$condition,
 #Make plot
 data_grams_groupedByDrug %>%
   ggplot(mapping = aes(x = condition,
-                       y = mean_grams,
-                       fill = condition)) +
-  geom_col() + 
-  geom_errorbar(aes(ymin = mean_grams - sd_grams,
-                    ymax = mean_grams + sd_grams))
+                       y = grams,
+                       fill = condition,
+                       ymin = grams - se,
+                       ymax = grams + se)) +
+  geom_col(show.legend = FALSE) + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) +
+  scale_x_discrete(labels = my_drug_labels) +
+  labs(x = "Drug Condition",
+       y = "Intake (grams)")
 ```
 
 ```{r intake by rat grams}
@@ -342,19 +368,19 @@ data_grams_groupedByRat %>%
 #mean calories for each rat (collapsed across days, conditions, and drug condition)
 meanGrams_groupedByDiet <- data_grams_long_foodOnly %>%
   group_by(diet) %>%
-  summarise(mean(grams))
+  summarise(grams = mean(grams))
 
 #SD's
 SDGrams_groupedByDiet <- data_grams_long_foodOnly %>%
   group_by(diet) %>%
-  summarise(sd(grams))
+  summarise(sd = sd(grams),
+            n = n(),
+            se = sd/sqrt(n))
 
 #Merge data frames
 data_grams_groupedByDiet <- inner_join(meanGrams_groupedByDiet,
                                  SDGrams_groupedByDiet, 
-                                by = "diet" ) %>%
-  rename("mean_grams" = "mean(grams)",
-         "sd_grams" = "sd(grams)")
+                                by = "diet" ) 
 
 data_grams_groupedByDiet$diet <- factor(data_grams_groupedByDiet$diet,
                                        levels = diet_names)
@@ -362,11 +388,17 @@ data_grams_groupedByDiet$diet <- factor(data_grams_groupedByDiet$diet,
 #Make plot
 data_grams_groupedByDiet %>%
   ggplot(mapping = aes(x = diet,
-                       y = mean_grams,
-                       fill = diet)) +
-  geom_col() + 
-  geom_errorbar(aes(ymin = mean_grams - sd_grams,
-                    ymax = mean_grams + sd_grams))
+                       y = grams,
+                       fill = diet,
+                       ymin = grams - se,
+                       ymax = grams + se)) +
+  geom_col(show.legend = FALSE) + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) +
+  scale_x_discrete(labels = my_diet_labels) +
+  labs(x = "Diet (% sugar by weight)",
+       y = "Intake (grams)")
 ```
 
 ## Inferential Stats
@@ -395,6 +427,52 @@ grams.aov <- ezANOVA(data = data_grams_long_foodOnly,
                     return_aov = TRUE,
                     type = 2)
 grams.aov$ANOVA
+
+
+#Figure 2
+
+#mean calories for each rat (collapsed across days, conditions, and drug condition)
+meanGrams <- data_grams_long_foodOnly %>%
+  group_by(diet, condition) %>%
+  summarise(grams = mean(grams))
+
+#SD's
+SEGrams <- data_grams_long_foodOnly %>%
+  group_by(diet, condition) %>%
+  summarise(n = n(),
+            sd = sd(grams),
+            se = sd/sqrt(n))
+
+#Merge data frames
+data_joined <- inner_join(meanGrams,
+                                 SEGrams, 
+                                 by = c("diet", "condition"))
+  
+
+data_joined$diet <- factor(data_joined$diet,
+                                       levels = diet_names)
+
+#Make plot
+my_x_labels <- setNames(c("High DAMGO", "Low DAMGO", "Naltrexone", "Saline"),
+                        c("HI", "LO", "NAL", "VEH"))
+my_fill_labels <- setNames(c("0%", "20%", "40%", "60%", "80%", "100%"),
+                           diet_names)
+
+data_joined %>%
+  ggplot(mapping = aes(x = condition,
+                       y = grams,
+                       fill = diet,
+                       ymin = grams - se,
+                       ymax = grams+ se)) +
+  geom_col(position = "dodge") + 
+  geom_errorbar(position = position_dodge(0.9),
+                width = 0.5,
+                size = 0.2) + 
+  scale_x_discrete(labels = my_x_labels) +
+  scale_fill_discrete(labels = my_fill_labels) +
+  labs(x = "Drug Condition",
+       y = "Intake (grams)",
+       fill = "Diet (% sugar)")
 ```
 
 So the story in terms of grams looks just about the same as it does in terms of calories. However, there's enough variability in the data that two possibilities are jumping into my head:
