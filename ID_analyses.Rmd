@@ -40,6 +40,10 @@ data <- read_excel("ID Test Data.xlsx", sheet = 6, range = "A3:K50", col_names =
 #turn negatives to zeroes
 data_filtered <- data
 data_filtered[data_filtered < 0] <- 0
+
+#filter out ID11 (because we missed on his surgery)
+data_filtered <- data_filtered %>%
+  filter(rat != "ID11")
 ```
 
 Now we need to pivot the data into long format:
@@ -122,7 +126,7 @@ data_groupedByRat <- inner_join(meanKcals_groupedByRat,
   rename("mean_kcal" = "mean(kcal)",
          "sd_kcal" = "sd(kcal)")
 
-rat_names <- c("ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID8", "ID9", "ID10", "ID11", "ID12")
+rat_names <- c("ID1", "ID2", "ID3", "ID4", "ID5", "ID6", "ID7", "ID8", "ID9", "ID10", "ID12")
 data_groupedByRat$rat <- factor(data_groupedByRat$rat,
                                        levels = rat_names)
 
@@ -202,7 +206,7 @@ kcals.aov <- ezANOVA(data = data_long_foodOnly,
                     wid = .(rat),
                     within = .(diet, condition),
                     return_aov = TRUE,
-                    type = 2)
+                    type = 1)
 kcals.aov$ANOVA
 ```
 
@@ -283,6 +287,10 @@ data_grams <- read_excel("ID Test Data.xlsx", sheet = 5, range = "A3:K50", col_n
 #turn negatives to zeroes
 data_grams_filtered <- data_grams
 data_grams_filtered[data_grams_filtered < 0] <- 0
+
+#filter out ID11
+data_grams_filtered <-data_grams_filtered %>%
+  filter(rat != "ID11")
 
 #Pivot long
 data_grams_long <- data_grams_filtered %>%
@@ -425,7 +433,7 @@ grams.aov <- ezANOVA(data = data_grams_long_foodOnly,
                     wid = .(rat),
                     within = .(diet, condition),
                     return_aov = TRUE,
-                    type = 2)
+                    type = 1)
 grams.aov$ANOVA
 
 
@@ -555,6 +563,7 @@ Based on the plots we've generated, it's pretty clear that the rats preferred bl
 First I have to do some R trickery to force the software to handle my variables the way I want it to:
 
 ```{r as factor}
+#kcals
 data_long_foodOnly_factor <- data_long_foodOnly
 
 names <- c(1:4)
@@ -568,6 +577,21 @@ data_long_foodOnly_factor$diet <- factor(data_long_foodOnly_factor$diet, levels 
 data_long_foodOnly_factor$condition <- factor(data_long_foodOnly_factor$condition, levels = condition_names)
 
 str(data_long_foodOnly_factor)
+
+#grams
+data_grams_long_foodOnly_factor <- data_grams_long_foodOnly
+
+names <- c(1:4)
+
+data_grams_long_foodOnly_factor[,names] <- lapply(data_grams_long_foodOnly_factor[,names], factor)
+
+data_grams_long_foodOnly_factor$rat <- factor(data_grams_long_foodOnly_factor$rat, levels = rat_names)
+
+data_grams_long_foodOnly_factor$diet <- factor(data_grams_long_foodOnly_factor$diet, levels = diet_names)
+
+data_grams_long_foodOnly_factor$condition <- factor(data_grams_long_foodOnly_factor$condition, levels = condition_names)
+
+str(data_grams_long_foodOnly_factor)
 ```
 
 And now I'm going to give it a shot:
@@ -591,6 +615,24 @@ contrast_names <- list(c(2, -1, -1, -1, -1, 2,
 
 contrast(kcal.em,
          method = contrast_names)
+
+#By grams
+options(contrasts = c("contr.sum", "contr.poly"))
+grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet, condition),
+                    return_aov = TRUE,
+                    type = 1)
+grams.em <- emmeans(grams.aov$aov, ~diet * condition)
+
+contrast_names <- list(c(2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2,
+                         2, -1, -1, -1, -1, 2))
+
+contrast(grams.em,
+         method = contrast_names)
 ```
 
 So if I did this right, then we did find the effect we were looking for. However, I'm a little unsure of this, so I may double-check in SPSS just for peace of mind.
@@ -600,15 +642,27 @@ So if I did this right, then we did find the effect we were looking for. However
 To go about answering this question, we can start by filtering the data to only include the naltrexone and saline groups:
 
 ```{r q3 filter}
+#kcals
 data_long_foodOnly_factor_q3 <- data_long_foodOnly_factor %>%
   filter(condition == "VEH" | condition == "NAL")
+
+#grams
+data_grams_long_foodOnly_factor_q3 <- data_grams_long_foodOnly_factor %>%
+   filter(condition == "VEH" | condition == "NAL")
 ```
 
 And now we can visualize:
 
 ```{r q3 viz}
+#kcals
 ggboxplot(data_long_foodOnly_factor_q3,
           x = "condition", y = "kcal",
+          color = "diet"
+          )
+
+#grams
+ggboxplot(data_grams_long_foodOnly_factor_q3,
+          x = "condition", y = "grams",
           color = "diet"
           )
 ```
@@ -618,6 +672,7 @@ So just visually, it looks like the trend of consumption rising as sugar content
 Since we have a significant omnibus effect, I feel comfortable proceeding with looking at significant one-way effects within each drug category. We can start by filtering to create datasets for each specific drug group:
 
 ```{r q3 more filters}
+## kcals
 # VEH dataset
 data_long_foodOnly_factor_veh <- data_long_foodOnly_factor %>%
   filter(condition == "VEH")
@@ -625,28 +680,57 @@ data_long_foodOnly_factor_veh <- data_long_foodOnly_factor %>%
 #NAL dataset
 data_long_foodOnly_factor_nal <- data_long_foodOnly_factor %>%
   filter(condition == "NAL")
+
+##grams
+# VEH dataset
+data_grams_long_foodOnly_factor_veh <- data_grams_long_foodOnly_factor %>%
+  filter(condition == "VEH")
+
+#NAL dataset
+data_grams_long_foodOnly_factor_nal <- data_grams_long_foodOnly_factor %>%
+  filter(condition == "NAL")
 ```
 
 Now we can run one-way ANOVA's on these data:
 
 ```{r q3 one-way ANOVAs}
+## kcals
 #VEH
-veh.aov <- ezANOVA(data = data_long_foodOnly_factor_veh,
+veh.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_veh,
                     dv = .(kcal),
                     wid = .(rat),
                     within = .(diet),
                     return_aov = TRUE,
                     type = 2)
-veh.aov$ANOVA
+veh.kcal.aov$ANOVA
 
 #NAL
-nal.aov <- ezANOVA(data = data_long_foodOnly_factor_nal,
+nal.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_nal,
                     dv = .(kcal),
                     wid = .(rat),
                     within = .(diet),
                     return_aov = TRUE,
                     type = 2)
-nal.aov$ANOVA
+nal.kcal.aov$ANOVA
+
+## grams
+veh.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_veh,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+veh.grams.aov$ANOVA
+
+#NAL
+nal.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_nal,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+nal.grams.aov$ANOVA
+
 ```
 
 So we have an omnibus effect of diet on consumption for the vehicle condition, but not the naltrexone group. Within the vehicle condition, we can proceed with pairwise comparisons:
@@ -714,7 +798,7 @@ lo.aov <- ezANOVA(data = data_long_foodOnly_factor_lo,
 lo.aov$ANOVA
 
 #VEH (just so I don't have to scroll back up)
-veh.aov$ANOVA
+veh.kcal.aov$ANOVA
 ```
 
 So we get significant omnibus diet effects for all 3 drug groups (even though the omnibus effect for the low dose is just barely significant). Let's run pairwise comparisons now:
@@ -1128,3 +1212,23 @@ And it's at this point that I realize: almost everyone's favorite diet was the 8
 This may just be luck of the draw that we got animals who all happened to be 80% preferrers. Alternatively, it may be the case that all rats would prefer 80%. Our dataset doesn't let us distinguish, but it does reinforce that DAMGO increases consumption of preferred diets.
 
 And just like that, I think we're done with experiment 2 analysis!
+
+## Sike, more plots I want
+
+I want to see each animal's preferences across testing days too
+
+```{r individual preferences on testing days}
+data_long_foodOnly_factor %>%
+  ggplot(mapping = aes(x = diet,
+                       y = kcal,
+                       fill = diet)) + 
+  geom_col(position = "dodge") + 
+  facet_wrap(~rat)
+
+data_grams_long_foodOnly_factor %>%
+  ggplot(mapping = aes(x = diet,
+                       y = grams,
+                       fill = diet)) + 
+  geom_col(position = "dodge") + 
+  facet_wrap(~rat)
+```
