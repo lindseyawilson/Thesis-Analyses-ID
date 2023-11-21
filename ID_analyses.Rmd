@@ -24,6 +24,7 @@ library(car)
 library(Hmisc)
 library(corrplot)
 library(ggsignif)
+library(writexl)
 ```
 
 And let's read our excel data in
@@ -745,6 +746,7 @@ data_long_foodOnly_factor_veh %>%
 #Effect size
 data_long_foodOnly_factor_veh %>%
   cohens_d(kcal~diet, paired = TRUE)
+
 ```
 
 So overall, it appears that the sugarier diets are favored in the vehicle group, but these preferences are abolished (or at least are drastically reduced) in the naltrexone condition.
@@ -756,6 +758,7 @@ I think I can repeat this pipeline to compare what happens between the DAMGO gro
 Always a good idea to start with visualization:
 
 ```{r q4}
+# kcals
 data_long_foodOnly_factor_q3 <- data_long_foodOnly_factor %>%
   filter(condition == "HI" | condition == "LO" | condition == "VEH")
 
@@ -763,12 +766,22 @@ ggboxplot(data_long_foodOnly_factor_q3,
           x = "condition", y = "kcal",
           color = "diet"
           )
+
+# grams
+data_grams_long_foodOnly_factor_q3 <- data_grams_long_foodOnly_factor %>%
+  filter(condition == "HI" | condition == "LO" | condition == "VEH")
+
+ggboxplot(data_grams_long_foodOnly_factor_q3,
+          x = "condition", y = "grams",
+          color = "diet"
+          )
 ```
 
 Again, the significant omnibus effect allows us to run simple one-way ANOVAs for the HI and LO dose groups:
 
 ```{r q4 ANOVAs}
-##Filter out HI and LO groups
+###Filter out HI and LO groups
+#kcals
 # HI dataset
 data_long_foodOnly_factor_hi <- data_long_foodOnly_factor %>%
   filter(condition == "HI")
@@ -779,26 +792,58 @@ data_long_foodOnly_factor_lo <- data_long_foodOnly_factor %>%
 
 ##ANOVAs
 #HI
-hi.aov <- ezANOVA(data = data_long_foodOnly_factor_hi,
+hi.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_hi,
                     dv = .(kcal),
                     wid = .(rat),
                     within = .(diet),
                     return_aov = TRUE,
                     type = 2)
-hi.aov$ANOVA
+hi.kcal.aov$ANOVA
 
 
 #LO
-lo.aov <- ezANOVA(data = data_long_foodOnly_factor_lo,
+lo.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_lo,
                     dv = .(kcal),
                     wid = .(rat),
                     within = .(diet),
                     return_aov = TRUE,
                     type = 2)
-lo.aov$ANOVA
+lo.kcal.aov$ANOVA
 
 #VEH (just so I don't have to scroll back up)
 veh.kcal.aov$ANOVA
+
+## grams
+# HI dataset
+data_grams_long_foodOnly_factor_hi <- data_grams_long_foodOnly_factor %>%
+  filter(condition == "HI")
+
+#LO dataset
+data_grams_long_foodOnly_factor_lo <- data_grams_long_foodOnly_factor %>%
+  filter(condition == "LO")
+
+##ANOVAs
+#HI
+hi.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_hi,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+hi.grams.aov$ANOVA
+
+
+#LO
+lo.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_lo,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(diet),
+                    return_aov = TRUE,
+                    type = 2)
+lo.grams.aov$ANOVA
+
+#VEH (just so I don't have to scroll back up)
+veh.grams.aov$ANOVA
 ```
 
 So we get significant omnibus diet effects for all 3 drug groups (even though the omnibus effect for the low dose is just barely significant). Let's run pairwise comparisons now:
@@ -1231,4 +1276,29 @@ data_grams_long_foodOnly_factor %>%
                        fill = diet)) + 
   geom_col(position = "dodge") + 
   facet_wrap(~rat)
+```
+
+I also need to run pairwise comparisons for the one-way ANOVA specifically of the filtered naltrexone data
+
+```{r nal pairwise}
+#Significance
+data_grams_long_foodOnly_factor_nal %>%
+  pairwise_t_test(grams~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+```
+
+And lastly, I need to reformat some data for easier use in SPSS
+
+```{r spss reformat}
+data_kcal_wide <- data_long_foodOnly %>%
+  subset(select = -day) %>%
+  pivot_wider(names_from = c(condition, diet), values_from = kcal)
+#write_xlsx(data_kcal_wide, "/Users/lawilson1999/Library/Mobile Documents/com~apple~CloudDocs/Psychology MA/Second Year (2022-2023)/Thesis/Thesis analyses (ID)\\data_kcal_wide.xlsx")
+
+data_grams_wide <- data_grams_long_foodOnly %>%
+  subset(select = -day) %>%
+  pivot_wider(names_from = c(condition, diet), values_from = grams)
+#write_xlsx(data_kcal_wide, "/Users/lawilson1999/Library/Mobile Documents/com~apple~CloudDocs/Psychology MA/Second Year (2022-2023)/Thesis/Thesis analyses (ID)\\data_grams_wide.xlsx")
+
 ```
