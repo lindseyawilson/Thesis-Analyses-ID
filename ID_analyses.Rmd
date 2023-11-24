@@ -104,7 +104,8 @@ data_groupedByDrug %>%
                 size = 0.2) +
   scale_x_discrete(labels = my_drug_labels) +
   labs(x = "Drug Condition",
-       y = "Intake (kcal)") 
+       y = "Intake (kcal)") +
+  theme_classic()
 ```
 
 And to get a sense of between-subject variability, lets do a similar analysis grouping by rat
@@ -181,7 +182,8 @@ data_groupedByDiet %>%
                 size = 0.2) +
   scale_x_discrete(labels = my_diet_labels) +
   labs(x = "Diet (% sugar by weight)",
-       y = "Intake (kcal)")
+       y = "Intake (kcal)") +
+  theme_classic()
 ```
 
 So here it looks like on average the eighty percent diet was a hit. However, it seems like across all of these dimensions, as overall caloric intake increases, the variation in intake also increases.
@@ -265,7 +267,8 @@ data_groupedByDiet %>%
   scale_fill_discrete(labels = my_fill_labels) +
   labs(x = "Drug Condition",
        y = "Intake (kcal)",
-       fill = "Diet (% sugar)")
+       fill = "Diet (% sugar)") +
+  theme_classic()
 
 ```
 
@@ -338,7 +341,8 @@ data_grams_groupedByDrug %>%
                 size = 0.2) +
   scale_x_discrete(labels = my_drug_labels) +
   labs(x = "Drug Condition",
-       y = "Intake (grams)")
+       y = "Intake (grams)") +
+  theme_classic()
 ```
 
 ```{r intake by rat grams}
@@ -407,7 +411,8 @@ data_grams_groupedByDiet %>%
                 size = 0.2) +
   scale_x_discrete(labels = my_diet_labels) +
   labs(x = "Diet (% sugar by weight)",
-       y = "Intake (grams)")
+       y = "Intake (grams)") +
+  theme_classic()
 ```
 
 ## Inferential Stats
@@ -481,7 +486,8 @@ data_joined %>%
   scale_fill_discrete(labels = my_fill_labels) +
   labs(x = "Drug Condition",
        y = "Intake (grams)",
-       fill = "Diet (% sugar)")
+       fill = "Diet (% sugar)") +
+  theme_classic()
 ```
 
 So the story in terms of grams looks just about the same as it does in terms of calories. However, there's enough variability in the data that two possibilities are jumping into my head:
@@ -737,6 +743,7 @@ nal.grams.aov$ANOVA
 So we have an omnibus effect of diet on consumption for the vehicle condition, but not the naltrexone group. Within the vehicle condition, we can proceed with pairwise comparisons:
 
 ```{r q3 pairwise veh}
+###VEH
 #Significance
 data_long_foodOnly_factor_veh %>%
   pairwise_t_test(kcal~diet, paired = TRUE,
@@ -746,6 +753,25 @@ data_long_foodOnly_factor_veh %>%
 #Effect size
 data_long_foodOnly_factor_veh %>%
   cohens_d(kcal~diet, paired = TRUE)
+
+###NAL
+##kcals
+#Significance
+data_long_foodOnly_factor_nal %>%
+  pairwise_t_test(kcal~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_long_foodOnly_factor_nal %>%
+  cohens_d(kcal~diet, paired = TRUE)
+
+##grams
+#Significance
+data_grams_long_foodOnly_factor_nal %>%
+  pairwise_t_test(grams~diet, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
 
 ```
 
@@ -900,6 +926,7 @@ ggplot(mapping = aes(x = factor(condition, level = condition_names),
 And we can then do pairwise paired t-tests:
 
 ```{r q5 pairiwse}
+## Kcal
 # Significance
 data_long_foodOnly %>%
   pairwise_t_test(kcal~condition, paired = TRUE,
@@ -909,6 +936,17 @@ data_long_foodOnly %>%
 #Effect size
 data_long_foodOnly %>%
   cohens_d(kcal~condition, paired = TRUE)
+
+## Grams
+data_grams_long_foodOnly %>%
+  pairwise_t_test(grams~condition, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+
+#Effect size
+data_grams_long_foodOnly %>%
+  cohens_d(grams~condition, paired = TRUE)
+
 ```
 So it looks like the high dose did increase consumption over the vehicle dose, but the low dose didn't, and naltrexone didn't significantly lower it. If anything, it looks like drug didn't lead to huge group level changes, but more just affected the amount of variability across groups.
 
@@ -1288,7 +1326,7 @@ data_grams_long_foodOnly_factor_nal %>%
                   estimate = TRUE)
 ```
 
-And lastly, I need to reformat some data for easier use in SPSS
+I need to reformat some data for easier use in SPSS
 
 ```{r spss reformat}
 data_kcal_wide <- data_long_foodOnly %>%
@@ -1301,4 +1339,199 @@ data_grams_wide <- data_grams_long_foodOnly %>%
   pivot_wider(names_from = c(condition, diet), values_from = grams)
 #write_xlsx(data_kcal_wide, "/Users/lawilson1999/Library/Mobile Documents/com~apple~CloudDocs/Psychology MA/Second Year (2022-2023)/Thesis/Thesis analyses (ID)\\data_grams_wide.xlsx")
 
+```
+
+I want to run additional tests comparing the effect of drug dose across diet groups for kcals:
+
+```{r diet comparisons kcal}
+###Filter out diet groups
+#kcals
+# 0% dataset
+data_long_foodOnly_factor_zero <- data_long_foodOnly_factor %>%
+  filter(diet == "zero")
+
+#20% dataset
+data_long_foodOnly_factor_twenty <- data_long_foodOnly_factor %>%
+  filter(diet == "twenty")
+
+#40%
+data_long_foodOnly_factor_forty <- data_long_foodOnly_factor %>%
+  filter(diet == "forty")
+
+#60%
+data_long_foodOnly_factor_sixty <- data_long_foodOnly_factor %>%
+  filter(diet == "sixty")
+
+#80%
+data_long_foodOnly_factor_eighty <- data_long_foodOnly_factor %>%
+  filter(diet == "eighty")
+
+#100%
+data_long_foodOnly_factor_hundred <- data_long_foodOnly_factor %>%
+  filter(diet == "hundred")
+
+##ANOVAs
+#0%
+zero.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_zero,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+zero.kcal.aov$ANOVA
+
+#20%
+twenty.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_twenty,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+twenty.kcal.aov$ANOVA
+
+#40%
+forty.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_forty,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+forty.kcal.aov$ANOVA
+
+#60%
+sixty.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_sixty,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+sixty.kcal.aov$ANOVA
+
+#80%
+eighty.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_eighty,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+eighty.kcal.aov$ANOVA
+
+#100%
+hundred.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_hundred,
+                    dv = .(kcal),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+hundred.kcal.aov$ANOVA
+```
+
+And for grams
+
+```{r diet comparisons grams}
+###Filter out diet groups
+#kcals
+# 0% dataset
+data_grams_long_foodOnly_factor_zero <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "zero")
+
+#20% dataset
+data_grams_long_foodOnly_factor_twenty <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "twenty")
+
+#40%
+data_grams_long_foodOnly_factor_forty <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "forty")
+
+#60%
+data_grams_long_foodOnly_factor_sixty <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "sixty")
+
+#80%
+data_grams_long_foodOnly_factor_eighty <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "eighty")
+
+#100%
+data_grams_long_foodOnly_factor_hundred <- data_grams_long_foodOnly_factor %>%
+  filter(diet == "hundred")
+
+##ANOVAs
+#0%
+zero.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_zero,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+zero.grams.aov$ANOVA
+
+#20%
+twenty.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_twenty,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+twenty.grams.aov$ANOVA
+
+#40%
+forty.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_forty,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+forty.grams.aov$ANOVA
+
+#60%
+sixty.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_sixty,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+sixty.grams.aov$ANOVA
+
+#80%
+eighty.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_eighty,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+eighty.grams.aov$ANOVA
+
+#100%
+hundred.grams.aov <- ezANOVA(data = data_grams_long_foodOnly_factor_hundred,
+                    dv = .(grams),
+                    wid = .(rat),
+                    within = .(condition),
+                    return_aov = TRUE,
+                    type = 2)
+hundred.grams.aov$ANOVA
+
+```
+
+Scatters showing correlation between preference and intake:
+
+```{r weird scatter}
+hi_effects_grams_full %>%
+  ggplot(mapping = aes(x = baseline_eighty,
+                       y = eighty_effect)) +
+  geom_point() +
+  geom_smooth(method = "lm") + 
+  labs(title = "High Dose (0.25µg/0.5µL/side)",
+       x = "Baseline Intake (grams)",
+       y = "Effect of DAMGO on Intake (grams)") +
+  theme_classic()
+
+lo_effects_grams_full %>%
+  ggplot(mapping = aes(x = baseline_eighty,
+                       y = eighty_effect)) +
+  geom_point() +
+  geom_smooth(method = "lm") + 
+  labs(title = "Low Dose (0.025µg/0.5µL/side)",
+       x = "Baseline Intake (grams)",
+       y = "Effect of DAMGO on Intake (grams)") +
+  theme_classic()
 ```
