@@ -268,7 +268,9 @@ data_groupedByDiet %>%
   labs(x = "Drug Condition",
        y = "Intake (kcal)",
        fill = "Diet (% sugar)") +
-  theme_classic()
+  theme_classic() +
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(size = 12))
 
 ```
 
@@ -487,7 +489,8 @@ data_joined %>%
   labs(x = "Drug Condition",
        y = "Intake (grams)",
        fill = "Diet (% sugar)") +
-  theme_classic()
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(size = 12))
 ```
 
 So the story in terms of grams looks just about the same as it does in terms of calories. However, there's enough variability in the data that two possibilities are jumping into my head:
@@ -1416,6 +1419,12 @@ eighty.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_eighty,
                     type = 2)
 eighty.kcal.aov$ANOVA
 
+pairwiseEighty <- data_long_foodOnly_factor_eighty %>%
+  pairwise_t_test(kcal~condition, paired = TRUE,
+                  p.adjust.method = "bonferroni",
+                  estimate = TRUE)
+pairwiseEighty
+
 #100%
 hundred.kcal.aov <- ezANOVA(data = data_long_foodOnly_factor_hundred,
                     dv = .(kcal),
@@ -1521,17 +1530,17 @@ hi_effects_grams_full %>%
   geom_point() +
   geom_smooth(method = "lm") + 
   labs(title = "High Dose (0.25µg/0.5µL/side)",
-       x = "Baseline Intake (grams)",
-       y = "Effect of DAMGO on Intake (grams)") +
-  theme_classic()
+       x = "Baseline 80% Sugar Intake (grams)",
+       y = "Effect of DAMGO on 80% Sugar Intake (grams)") +
+  theme_classic(base_size = 16)
 
 lo_effects_grams_full %>%
   ggplot(mapping = aes(x = baseline_eighty,
                        y = eighty_effect)) +
   geom_point() +
-  geom_smooth(method = "lm") + 
+  geom_smooth(method = "lm", se = 0.95) + 
   labs(title = "Low Dose (0.025µg/0.5µL/side)",
-       x = "Baseline Intake (grams)",
-       y = "Effect of DAMGO on Intake (grams)") +
-  theme_classic()
+       x = "Baseline 80% Sugar Intake (grams)",
+       y = "Effect of DAMGO on 80% Sugar Intake (grams)") +
+  theme_classic(base_size = 16)
 ```
