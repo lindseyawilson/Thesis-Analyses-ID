@@ -1544,3 +1544,32 @@ lo_effects_grams_full %>%
        y = "Effect of DAMGO on 80% Sugar Intake (grams)") +
   theme_classic(base_size = 16)
 ```
+
+Let's try to get these scatterplots on the same plot:
+
+```{r merge scatters}
+hi_effects_eighty <- hi_effects_grams_full %>%
+  subset(select = c(rat, baseline_eighty, eighty_effect)) %>%
+  mutate(dose = "HI")
+
+  
+
+lo_effects_eighty <- lo_effects_grams_full %>%
+  subset(select = c(rat, baseline_eighty, eighty_effect)) %>%
+  mutate(dose = "LO")
+
+damgo_effects <- rbind(hi_effects_eighty, lo_effects_eighty)
+
+damgo_effects %>%
+  ggplot(mapping = aes(x = baseline_eighty,
+                       y = eighty_effect,
+                       color = dose)) +
+  geom_point() +
+  geom_smooth(method = "lm") + 
+  labs(
+       x = "Baseline 80% Sugar Intake (grams)",
+       y = "Effect of DAMGO on 80% Sugar Intake (grams)") +
+  theme_classic(base_size = 13) +
+  scale_color_discrete(name = "DAMGO Dose", labels = c("High (0.25 µg/0.5µL/side)", "Low (0.025µg/0.5µL/side"))
+
+```
